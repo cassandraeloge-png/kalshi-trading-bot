@@ -1152,7 +1152,7 @@ class TradingBot:
         # cell is off. self._rr_cell_params stays safe-only for the
         # scanner's fast path.
         self._rr_cell_params_all = {}
-        rr_params_path = Path("data/rr_params.json")
+        rr_params_path = Path(__file__).resolve().parent / "data" / "rr_params.json"
         if rr_params_path.exists():
             with open(rr_params_path) as f:
                 all_rr_params = json.load(f)
@@ -3838,7 +3838,7 @@ class TradingBot:
         bot restart.
 
         Returns a summary dict with {"loaded": n, "disabled": [cells...]}."""
-        rr_params_path = Path("data/rr_params.json")
+        rr_params_path = Path(__file__).resolve().parent / "data" / "rr_params.json"
         if not rr_params_path.exists():
             self._log("[RELOAD] rr_params.json missing — keeping current params", level="warning")
             return {"loaded": 0, "disabled": []}
