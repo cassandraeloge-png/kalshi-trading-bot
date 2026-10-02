@@ -634,6 +634,51 @@ function TradeHistory({
   );
 }
 
+type ScalpRead = {
+  state: "WAIT" | "WATCH" | "UP MOVE" | "DOWN MOVE";
+  move15: number | null;
+  move60: number | null;
+  direction: "UP" | "DOWN" | "MIXED";
+  detail: string;
+};
+
+function scalpRead(data: TickData): ScalpRead {
+  const pts = (data.btc_prices || []).filter((p) => Number.isFinite(p[0]) && Number.isFinite(p[1]));
+  if (pts.length < 2 || !data.btc_price) {
+    return { state: "WAIT", move15: null, move60: null, direction: "MIXED", detail: "warming live BTC history" };
+  }
+  const nowTs = pts[pts.length - 1][0];
+  const atOrBefore = (ageMs: number) => {
+    const target = nowTs - ageMs;
+    for (let i = pts.length - 1; i >= 0; i--) if (pts[i][0] <= target) return pts[i][1];
+    return null;
+  };
+  const p15 = atOrBefore(15_000);
+  const p60 = atOrBefore(60_000);
+  const move15 = p15 == null ? null : data.btc_price - p15;
+  const move60 = p60 == null ? null : data.btc_price - p60;
+  const m1 = data.btc_momentum_1m || 0;
+  const m5 = data.btc_momentum_5m || 0;
+  const alignedUp = m1 > 0 && m5 >= 0;
+  const alignedDown = m1 < 0 && m5 <= 0;
+  const direction = alignedUp ? "UP" : alignedDown ? "DOWN" : "MIXED";
+  if (move60 != null && Math.abs(move60) >= 50) {
+    const dir = move60 > 0 ? "UP" : "DOWN";
+    const confirmed = dir === "UP" ? alignedUp : alignedDown;
+    return {
+      state: confirmed ? (dir === "UP" ? "UP MOVE" : "DOWN MOVE") : "WATCH",
+      move15, move60, direction,
+      detail: confirmed
+        ? `$50+ / 60s move with 1m + 5m momentum aligned ${dir.toLowerCase()}`
+        : `$50+ / 60s move detected, but momentum is not aligned — do not treat as confirmed`,
+    };
+  }
+  if (move15 != null && Math.abs(move15) >= 25) {
+    return { state: "WATCH", move15, move60, direction, detail: "fast $25+ / 15s move — watching for $50+ continuation" };
+  }
+  return { state: "WAIT", move15, move60, direction, detail: "no large short-term BTC move detected" };
+}
+
 // ─── page ───────────────────────────────────────────────────────────────────
 
 export default function DashboardPage({
@@ -769,6 +814,7 @@ export default function DashboardPage({
     : RANGES.find((r) => r.k === pnlRange)?.label || "Today";
 
   const activeInfo = activeKey ? splitAssetKey(activeKey) : null;
+  const scalp = scalpRead(data);
 
   return (
     <div className="r-page" data-rider="1">
@@ -947,10 +993,52 @@ export default function DashboardPage({
           </div>
         </div>
 
+        {/* BTC move / scalp monitor — observational only; it never places an order. */}
+        <div className="r-section">
+          <div className="r-section-label">
+            <span className="r-num">02</span>BTC move monitor
+            <div style={{ marginTop: 18, color: scalp.state === "WAIT" ? "var(--r-ink-3)" : scalp.state === "WATCH" ? "var(--r-warn)" : scalp.state === "UP MOVE" ? "var(--r-pos)" : "var(--r-neg)", letterSpacing: "0.18em" }}>
+              {scalp.state}
+            </div>
+          </div>
+          <div className="r-gates">
+            <div className="r-gate">
+              <span className="r-gate-name">BTC now</span>
+              <span className="r-gate-val">${data.btc_price.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+              <span className="r-gate-ref">live feed</span>
+              <span className="r-gate-flag r-ok">LIVE</span>
+            </div>
+            <div className="r-gate">
+              <span className="r-gate-name">15-second move</span>
+              <span className="r-gate-val">{scalp.move15 == null ? "warming" : `${scalp.move15 >= 0 ? "+" : "−"}${Math.abs(scalp.move15).toFixed(2)}`}</span>
+              <span className="r-gate-ref">WATCH at ±$25</span>
+              <span className={`r-gate-flag ${scalp.move15 != null && Math.abs(scalp.move15) >= 25 ? "r-no" : ""}`}>{scalp.move15 != null && Math.abs(scalp.move15) >= 25 ? "MOVE" : "—"}</span>
+            </div>
+            <div className="r-gate">
+              <span className="r-gate-name">60-second move</span>
+              <span className="r-gate-val">{scalp.move60 == null ? "warming" : `${scalp.move60 >= 0 ? "+" : "−"}${Math.abs(scalp.move60).toFixed(2)}`}</span>
+              <span className="r-gate-ref">LARGE at ±$50</span>
+              <span className={`r-gate-flag ${scalp.move60 != null && Math.abs(scalp.move60) >= 50 ? "r-no" : ""}`}>{scalp.move60 != null && Math.abs(scalp.move60) >= 50 ? "LARGE" : "—"}</span>
+            </div>
+            <div className="r-gate">
+              <span className="r-gate-name">momentum alignment</span>
+              <span className="r-gate-val">{scalp.direction}</span>
+              <span className="r-gate-ref">1m {data.btc_momentum_1m >= 0 ? "+" : ""}{data.btc_momentum_1m.toFixed(3)}% · 5m {data.btc_momentum_5m >= 0 ? "+" : ""}{data.btc_momentum_5m.toFixed(3)}%</span>
+              <span className="r-gate-flag">{scalp.direction}</span>
+            </div>
+            <div style={{ padding: "14px 0", color: "var(--r-ink-2)", fontSize: 13, lineHeight: 1.6 }}>
+              <b style={{ color: "var(--r-ink)" }}>{scalp.state}:</b> {scalp.detail}.
+              <div style={{ marginTop: 6, color: "var(--r-ink-4)", fontSize: 11 }}>
+                Read-only movement heuristic. It is not a validated profit signal and never submits a Kalshi order.
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Gates */}
         <div className="r-section">
           <div className="r-section-label">
-            <span className="r-num">02</span>Gates
+            <span className="r-num">03</span>Settlement gates
             <div
               style={{
                 marginTop: 18,
@@ -1014,7 +1102,7 @@ export default function DashboardPage({
         {/* Order book */}
         <div className="r-section">
           <div className="r-section-label">
-            <span className="r-num">03</span>Order book
+            <span className="r-num">04</span>Order book
             <div style={{ marginTop: 18, color: "var(--r-ink-3)" }}>
               {activeInfo ? `${activeInfo.coin.toUpperCase()} · ${activeInfo.tf}` : "—"}
             </div>
@@ -1068,7 +1156,7 @@ export default function DashboardPage({
         {/* Signal tape */}
         <div className="r-section">
           <div className="r-section-label">
-            <span className="r-num">04</span>Signal tape
+            <span className="r-num">05</span>Signal tape
             <div
               style={{
                 marginTop: 14,
@@ -1114,7 +1202,7 @@ export default function DashboardPage({
         {/* Trade history — same range as the P&L hero above */}
         <div className="r-section">
           <div className="r-section-label">
-            <span className="r-num">05</span>Trade history
+            <span className="r-num">06</span>Trade history
             <div style={{ marginTop: 18, color: "var(--r-ink-3)" }}>
               {rangeLabel}
             </div>
