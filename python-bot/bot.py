@@ -1045,111 +1045,17 @@ class TradingBot:
                 client=self.client,
             )
 
-        # Multi-asset: scanners and price feeds for 15M and daily series
-        # Use RTIFeed (CF Benchmarks RTI approximation) instead of single-exchange
-        # PriceFeed — aggregates Coinbase, Kraken, Bitstamp, Gemini, Binance
-        # with volume weighting and outlier filtering to match Kalshi's settlement index
+        # This deployment is intentionally BTC 15-minute only.
+        # Keeping unrelated crypto/daily scanners enabled caused public Kalshi
+        # REST bursts and 429 rate-limit failures during startup.
         self.assets = {
-            # ── 15-minute markets ──
             "btc": {
                 "series": "KXBTC15M",
                 "symbol": "BTC-USD",
                 "scanner": MarketScanner(self.client, series="KXBTC15M"),
                 "price_feed": RTIFeed(symbol="BTC-USD", window_seconds=1200),
             },
-            "eth": {
-                "series": "KXETH15M",
-                "symbol": "ETH-USD",
-                "scanner": MarketScanner(self.client, series="KXETH15M"),
-                "price_feed": RTIFeed(symbol="ETH-USD", window_seconds=1200),
-            },
-            "sol": {
-                "series": "KXSOL15M",
-                "symbol": "SOL-USD",
-                "scanner": MarketScanner(self.client, series="KXSOL15M"),
-                "price_feed": RTIFeed(symbol="SOL-USD", window_seconds=1200),
-            },
-            # ── Additional crypto 15M (resolution_rider only) ──
-            "doge": {
-                "series": "KXDOGE15M",
-                "symbol": "DOGE-USD",
-                "scanner": MarketScanner(self.client, series="KXDOGE15M"),
-                "price_feed": RTIFeed(symbol="DOGE-USD", window_seconds=1200),
-            },
-            "xrp": {
-                "series": "KXXRP15M",
-                "symbol": "XRP-USD",
-                "scanner": MarketScanner(self.client, series="KXXRP15M"),
-                "price_feed": RTIFeed(symbol="XRP-USD", window_seconds=1200),
-            },
-            "bnb": {
-                "series": "KXBNB15M",
-                "symbol": "BNB-USD",
-                "scanner": MarketScanner(self.client, series="KXBNB15M"),
-                "price_feed": RTIFeed(symbol="BNB-USD", window_seconds=1200),
-            },
-            "hype": {
-                "series": "KXHYPE15M",
-                "symbol": "HYPE-USD",
-                "scanner": MarketScanner(self.client, series="KXHYPE15M"),
-                "price_feed": RTIFeed(symbol="HYPE-USD", window_seconds=1200),
-            },
         }
-        # ── Daily markets (share price feeds with 15M counterparts) ──
-        # RR uses a single flat stake (STAKE_USD) for both 15M and daily
-        # cells; per-asset sizing is expressed through cell params, not
-        # through a separate daily-stake override.
-        self.assets.update({
-            "btc_daily": {
-                "series": "KXBTCD",
-                "symbol": "BTC-USD",
-                "scanner": MarketScanner(self.client, series="KXBTCD"),
-                "price_feed": self.assets["btc"]["price_feed"],
-                "is_daily": True,
-            },
-            "eth_daily": {
-                "series": "KXETHD",
-                "symbol": "ETH-USD",
-                "scanner": MarketScanner(self.client, series="KXETHD"),
-                "price_feed": self.assets["eth"]["price_feed"],
-                "is_daily": True,
-            },
-            "sol_daily": {
-                "series": "KXSOLD",
-                "symbol": "SOL-USD",
-                "scanner": MarketScanner(self.client, series="KXSOLD"),
-                "price_feed": self.assets["sol"]["price_feed"],
-                "is_daily": True,
-            },
-            "doge_daily": {
-                "series": "KXDOGED",
-                "symbol": "DOGE-USD",
-                "scanner": MarketScanner(self.client, series="KXDOGED"),
-                "price_feed": self.assets["doge"]["price_feed"],
-                "is_daily": True,
-            },
-            "xrp_daily": {
-                "series": "KXXRPD",
-                "symbol": "XRP-USD",
-                "scanner": MarketScanner(self.client, series="KXXRPD"),
-                "price_feed": self.assets["xrp"]["price_feed"],
-                "is_daily": True,
-            },
-            "bnb_daily": {
-                "series": "KXBNBD",
-                "symbol": "BNB-USD",
-                "scanner": MarketScanner(self.client, series="KXBNBD"),
-                "price_feed": self.assets["bnb"]["price_feed"],
-                "is_daily": True,
-            },
-            "hype_daily": {
-                "series": "KXHYPED",
-                "symbol": "HYPE-USD",
-                "scanner": MarketScanner(self.client, series="KXHYPED"),
-                "price_feed": self.assets["hype"]["price_feed"],
-                "is_daily": True,
-            },
-        })
 
         # Multi-exchange feeds for cross-exchange signals (one per symbol, shared by 15M and daily)
         self.multi_feeds = {}
@@ -1188,11 +1094,7 @@ class TradingBot:
             private_key_path=os.getenv("KALSHI_PRIVATE_KEY_PATH", "~/.key/kalshi/key.pem"),
             env=os.getenv("KALSHI_ENV", "prod"),
         )
-        self.ws_feed.subscribe([
-            "KXBTC15M", "KXBTCD", "KXETH15M", "KXETHD", "KXSOL15M", "KXSOLD",
-            "KXDOGE15M", "KXDOGED", "KXXRP15M", "KXXRPD",
-            "KXBNB15M", "KXBNBD", "KXHYPE15M", "KXHYPED",
-        ])
+        self.ws_feed.subscribe(["KXBTC15M"])
 
         # Strike cache populated from scanner/Kalshi API as markets are
         # discovered. Lookups return the last-known strike for a ticker,
