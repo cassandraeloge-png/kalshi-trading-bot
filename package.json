@@ -5,8 +5,8 @@
   "license": "MIT",
   "scripts": {
     "dev": "NODE_ENV=development tsx server/index.ts",
-    "build": "tsx script/build.ts",
-    "start": "NODE_ENV=production node dist/index.cjs",
+    "build": "python3 -m pip install -r python-bot/requirements.txt && tsx script/build.ts",
+    "start": "PAPER_TRADE=true KALSHI_ENV=prod SSE_PORT=5050 DATA_DIR=python-bot/data python3 python-bot/bot.py & NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
     "db:push": "drizzle-kit push"
   },
