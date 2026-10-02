@@ -3256,8 +3256,6 @@ class TradingBot:
             }
 
         btc = _price_data("btc")
-        eth = _price_data("eth")
-        sol = _price_data("sol")
 
         # Gather momentum for every tradeable asset key so the dashboard
         # can show the exact values the bot uses for RR gating. Includes
@@ -3366,14 +3364,14 @@ class TradingBot:
             "btc_momentum_1m": round(btc["mom_1m"], 4),
             "btc_momentum_5m": round(btc["mom_5m"], 4),
             "btc_prices": btc["prices"],
-            "eth_price": eth["price"],
-            "eth_momentum_1m": round(eth["mom_1m"], 4),
-            "eth_momentum_5m": round(eth["mom_5m"], 4),
-            "eth_prices": eth["prices"],
-            "sol_price": sol["price"],
-            "sol_momentum_1m": round(sol["mom_1m"], 4),
-            "sol_momentum_5m": round(sol["mom_5m"], 4),
-            "sol_prices": sol["prices"],
+            "eth_price": 0,
+            "eth_momentum_1m": 0,
+            "eth_momentum_5m": 0,
+            "eth_prices": [],
+            "sol_price": 0,
+            "sol_momentum_1m": 0,
+            "sol_momentum_5m": 0,
+            "sol_prices": [],
             "current_market": _market_data("btc"),
             "last_settled": _settled_data("btc"),
             "strategies": _strat_data("btc"),
