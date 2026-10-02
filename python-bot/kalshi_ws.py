@@ -68,12 +68,20 @@ class KalshiWebSocket:
         self.env = env
         self.ws_url = DEMO_WS_URL if env == "demo" else PROD_WS_URL
 
-        # Load RSA key (same as KalshiClient)
-        key_path = Path(private_key_path).expanduser()
-        with open(key_path, "rb") as f:
-            self.private_key = serialization.load_pem_private_key(
-                f.read(), password=None, backend=default_backend()
-            )
+        # WebSocket market data requires Kalshi credentials. In paper mode we
+        # intentionally allow the bot to run without them and fall back to the
+        # public REST market endpoints used by MarketScanner.
+        self.private_key = None
+        self._auth_available = bool(key_id and private_key_path)
+        if self._auth_available:
+            key_path = Path(private_key_path).expanduser()
+            if key_path.exists():
+                with open(key_path, "rb") as f:
+                    self.private_key = serialization.load_pem_private_key(
+                        f.read(), password=None, backend=default_backend()
+                    )
+            else:
+                self._auth_available = False
 
         # State
         self._series: list[str] = []
@@ -127,6 +135,9 @@ class KalshiWebSocket:
 
     def start(self):
         """Start the WebSocket in a background daemon thread."""
+        if not self._auth_available or self.private_key is None:
+            logger.info("[WS] Credentials absent; WebSocket disabled (public REST fallback active)")
+            return
         if self._thread and self._thread.is_alive():
             return
         self._running = True
