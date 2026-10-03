@@ -14,6 +14,7 @@ MODEL_PATH=Path(os.environ.get("V3_MODEL_PATH",str(Path(tempfile.gettempdir())/"
 KLINES_URL="https://api.binance.com/api/v3/klines"
 US_KLINES_URL="https://api.binance.us/api/v3/klines"
 US_AGG_URL="https://api.binance.us/api/v3/aggTrades"
+COINBASE_TRADES_URL="https://api.exchange.coinbase.com/products/BTC-USD/trades"
 FEATURES=["move2","move3","move5","move10","move15","move30","move60","move120","accel5_15","accel15_30","imb5","imb15","imb30","imb60","imb_accel","vol5ratio","vol15ratio","trade5ratio","trade15ratio","range15","pos15","range60","pos60","range120","pos120","rv15","rv60","rv_ratio","body5","lowerwick5","round_sin","round_cos"]
 
 class V3Predictor:
@@ -118,6 +119,36 @@ class V3Predictor:
                 return ks[-140:]
         except Exception as e:
             self._primary_error=str(e)[:160]
+
+        # Secondary: genuine Coinbase BTC-USD public trades. Coinbase's
+        # paginated public feed is liquid enough to reconstruct the required
+        # 1-second history with real OHLCV, trade counts and taker-side proxy.
+        try:
+            cb=[]; after=None
+            for _ in range(8):
+                params={"limit":1000}
+                if after: params["after"]=after
+                cr=self.session.get(COINBASE_TRADES_URL,params=params,timeout=8)
+                cr.raise_for_status(); batch=cr.json()
+                if not isinstance(batch,list) or not batch: break
+                cb.extend(batch)
+                oldest=pd.Timestamp(batch[-1]["time"]).timestamp()*1000
+                if oldest <= now_ms-155000: break
+                after=cr.headers.get("cb-after")
+                if not after: break
+            norm=[]
+            for t in cb:
+                T=int(pd.Timestamp(t["time"]).timestamp()*1000)
+                if T < now_ms-160000 or T > now_ms: continue
+                # Coinbase side is maker side; maker BUY => taker sell (m=True).
+                norm.append({"T":T,"p":t["price"],"q":t["size"],"m":t.get("side")=="buy"})
+            real_rows=self._bars_from_trades(norm,now_ms)
+            if len(real_rows)>=125:
+                self._active_source="Coinbase BTC-USD real trades → 1s bars"
+                self._source_exact=False
+                return real_rows[-140:]
+        except Exception as e:
+            self._coinbase_error=str(e)[:160]
 
         # Secondary: genuine Binance.US BTCUSD aggregate trades reconstructed
         # into 1-second OHLCV/trade-pressure bars. This is a venue/pair mismatch
