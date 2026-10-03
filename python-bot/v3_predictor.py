@@ -206,7 +206,7 @@ class V3Predictor:
             state=n15["direction"] if n15["actionable"] and not proxy else "WAIT"
             self.last={"version":"v3","mode":"paper","status":"live","source":getattr(self,"_active_source","unknown"),"source_exact_training_parity":bool(getattr(self,"_source_exact",False)),"source_price":round(price,2),"source_ts":ts,"age_seconds":max(0,round(now-ts/1000,1)),"state":state,"next_15":n15,"next_30":n30,"next_60":n60,"scalp_bias":scalp,"validation":{"dir15_threshold":.80,"dir15_holdout_accuracy":.850138,"dir15_holdout_coverage":.084822},"note":("Native Binance.com 1s input matches the historical bar source; still paper validation, not a Kalshi win-rate." if getattr(self,"_source_exact",False) else "LIVE INPUT IS A 1-MINUTE-TO-1-SECOND PROXY; historical accuracy must not be applied to these proxy predictions. Paper research only.")}
             if not self._reported_live:
-                print(f"[V3] LIVE source={self.last.get('source')} exact={self.last.get('source_exact_training_parity')} price={self.last.get('source_price')} p15={self.last.get('next_15')}", flush=True)
+                print(f"[V3] LIVE source={self.last.get('source')} exact={self.last.get('source_exact_training_parity')} price={self.last.get('source_price')} p15={self.last.get('next_15')} p30={self.last.get('next_30')} p60={self.last.get('next_60')} state={self.last.get('state')}", flush=True)
                 self._reported_live=True
         except Exception as e:
             err=str(e)[:240]
