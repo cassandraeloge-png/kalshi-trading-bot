@@ -17,7 +17,7 @@ FEATURES=["move2","move3","move5","move10","move15","move30","move60","move120",
 
 class V3Predictor:
     def __init__(self):
-        self.session=requests.Session(); self.bundle=None; self.last_fetch=0.0
+        self.session=requests.Session(); self.bundle=None; self.last_fetch=0.0; self._reported_live=False
         self.last={"version":"v3","mode":"paper","status":"warming","source":"Binance.US BTCUSDT 1m → 1s proxy bars","note":"Live venue proxy; historical V3 was trained on Binance.com BTCUSDT.","next_15":None,"next_30":None,"next_60":None,"scalp_bias":None}
         try: self._load()
         except Exception as e: self.last["status"]="error"; self.last["error"]=str(e)[:240]
@@ -143,6 +143,9 @@ class V3Predictor:
             scalp={"up30_before_down10":round(up30,4),"down30_before_up10":round(dn30,4),"research_only":True}
             state=n15["direction"] if n15["actionable"] else "WAIT"
             self.last={"version":"v3","mode":"paper","status":"live","source":getattr(self,"_active_source","unknown"),"source_exact_training_parity":bool(getattr(self,"_source_exact",False)),"source_price":round(price,2),"source_ts":ts,"age_seconds":max(0,round(now-ts/1000,1)),"state":state,"next_15":n15,"next_30":n30,"next_60":n60,"scalp_bias":scalp,"validation":{"dir15_threshold":.80,"dir15_holdout_accuracy":.850138,"dir15_holdout_coverage":.084822},"note":("Native Binance.com 1s input matches the historical bar source; still paper validation, not a Kalshi win-rate." if getattr(self,"_source_exact",False) else "LIVE INPUT IS A 1-MINUTE-TO-1-SECOND PROXY; historical accuracy must not be applied to these proxy predictions. Paper research only.")}
+            if not self._reported_live:
+                print(f"[V3] LIVE source={self.last.get('source')} exact={self.last.get('source_exact_training_parity')} price={self.last.get('source_price')} p15={self.last.get('next_15')}", flush=True)
+                self._reported_live=True
         except Exception as e:
             self.last={**self.last,"status":"error","error":str(e)[:240],"age_seconds":None}
         return self.last
