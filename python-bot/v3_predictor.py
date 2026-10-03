@@ -13,6 +13,7 @@ MODEL_BLOB_API=os.environ.get("V3_MODEL_BLOB_API","https://api.github.com/repos/
 MODEL_PATH=Path(os.environ.get("V3_MODEL_PATH",str(Path(tempfile.gettempdir())/"forward-predictor-v3-model.b64")))
 KLINES_URL="https://api.binance.com/api/v3/klines"
 US_KLINES_URL="https://api.binance.us/api/v3/klines"
+US_AGG_URL="https://api.binance.us/api/v3/aggTrades"
 FEATURES=["move2","move3","move5","move10","move15","move30","move60","move120","accel5_15","accel15_30","imb5","imb15","imb30","imb60","imb_accel","vol5ratio","vol15ratio","trade5ratio","trade15ratio","range15","pos15","range60","pos60","range120","pos120","rv15","rv60","rv_ratio","body5","lowerwick5","round_sin","round_cos"]
 
 class V3Predictor:
@@ -118,6 +119,28 @@ class V3Predictor:
         except Exception as e:
             self._primary_error=str(e)[:160]
 
+        # Secondary: genuine Binance.US BTCUSD aggregate trades reconstructed
+        # into 1-second OHLCV/trade-pressure bars. This is a venue/pair mismatch
+        # versus training, but contains real second-level observations.
+        try:
+            start_ms=now_ms-155000; trades=[]; cursor=start_ms
+            for _ in range(8):
+                rr=self.session.get(US_AGG_URL,params={"symbol":"BTCUSD","startTime":cursor,"endTime":now_ms,"limit":1000},timeout=8)
+                rr.raise_for_status(); batch=rr.json()
+                if not isinstance(batch,list) or not batch: break
+                trades.extend(batch)
+                nxt=int(batch[-1]["T"])+1
+                if len(batch)<1000 or nxt<=cursor: break
+                cursor=nxt
+            real_rows=self._bars_from_trades(trades,now_ms)
+            if len(real_rows)>=125:
+                self._active_source="Binance.US BTCUSD real trades → 1s bars"
+                self._source_exact=False
+                return real_rows[-140:]
+        except Exception as e:
+            self._secondary_error=str(e)[:160]
+
+        # Last-resort paper-only proxy.
         r=self.session.get(US_KLINES_URL,params={"symbol":"BTCUSDT","interval":"1m","limit":4},timeout=8)
         r.raise_for_status(); ks=r.json()
         if not isinstance(ks,list) or len(ks)<3:
