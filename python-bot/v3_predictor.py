@@ -22,20 +22,18 @@ class V3Predictor:
         except Exception as e: self.last["status"]="error"; self.last["error"]=str(e)[:240]
 
     def _load(self):
-        if not MODEL_PATH.exists() or MODEL_PATH.stat().st_size<1000:
-            r=self.session.get(MODEL_URL,timeout=45)
-            if r.ok:
-                MODEL_PATH.write_text(r.text)
-            else:
-                # GitHub raw may return 404 for this generated artifact even when
-                # the public Git blob is readable. Fetch the immutable blob by SHA.
-                br=self.session.get(MODEL_BLOB_API,headers={"Accept":"application/vnd.github+json"},timeout=45)
-                br.raise_for_status()
-                payload=br.json()
-                if payload.get("encoding")!="base64" or not payload.get("content"):
-                    raise RuntimeError("V3 Git blob response missing base64 content")
-                MODEL_PATH.write_bytes(base64.b64decode(payload["content"]))
-        raw=base64.b64decode(MODEL_PATH.read_text().strip())
+        # The research repository is private, so the trained artifact is bundled
+        # with this deployment in deterministic chunks. This removes all runtime
+        # GitHub authentication/download dependencies.
+        parts_dir=Path(__file__).resolve().parent/"data"/"v3_model_parts"
+        parts=sorted(parts_dir.glob("part_*.txt"))
+        if parts:
+            encoded="".join(p.read_text() for p in parts).strip()
+        elif MODEL_PATH.exists() and MODEL_PATH.stat().st_size>=1000:
+            encoded=MODEL_PATH.read_text().strip()
+        else:
+            raise RuntimeError("bundled V3 model parts are missing")
+        raw=base64.b64decode(encoded)
         self.bundle=pickle.loads(raw)
         if self.bundle.get("version")!=3: raise RuntimeError("wrong V3 artifact")
         if self.bundle.get("features")!=FEATURES: raise RuntimeError("V3 feature mismatch")
