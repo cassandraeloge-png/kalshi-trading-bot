@@ -10,13 +10,13 @@ import requests
 
 MODEL_URL=os.environ.get("V3_MODEL_URL","https://raw.githubusercontent.com/cassandraeloge-png/btc-15min/main/research/forward-predictor-v3-model.b64")
 MODEL_PATH=Path(os.environ.get("V3_MODEL_PATH",str(Path(tempfile.gettempdir())/"forward-predictor-v3-model.b64")))
-KLINES_URL="https://api.binance.us/api/v3/klines"
+TRADES_URL="https://api.binance.us/api/v3/aggTrades"
 FEATURES=["move2","move3","move5","move10","move15","move30","move60","move120","accel5_15","accel15_30","imb5","imb15","imb30","imb60","imb_accel","vol5ratio","vol15ratio","trade5ratio","trade15ratio","range15","pos15","range60","pos60","range120","pos120","rv15","rv60","rv_ratio","body5","upperwick5","lowerwick5","round_sin","round_cos"]
 
 class V3Predictor:
     def __init__(self):
         self.session=requests.Session(); self.bundle=None; self.last_fetch=0.0
-        self.last={"version":"v3","mode":"paper","status":"warming","source":"Binance.US BTCUSDT 1s","note":"Live venue proxy; historical V3 was trained on Binance.com BTCUSDT.","next_15":None,"next_30":None,"next_60":None,"scalp_bias":None}
+        self.last={"version":"v3","mode":"paper","status":"warming","source":"Binance.US BTCUSDT trades → 1s bars","note":"Live venue proxy; historical V3 was trained on Binance.com BTCUSDT.","next_15":None,"next_30":None,"next_60":None,"scalp_bias":None}
         try: self._load()
         except Exception as e: self.last["status"]="error"; self.last["error"]=str(e)[:240]
 
@@ -87,7 +87,39 @@ class V3Predictor:
             scalp={"up30_before_down10":round(up30,4),"down30_before_up10":round(dn30,4),"research_only":True}
             state="WAIT"
             if n15["actionable"]: state=n15["direction"]
-            self.last={"version":"v3","mode":"paper","status":"live","source":"Binance.US BTCUSDT 1s","source_price":round(price,2),"source_ts":ts,"age_seconds":max(0,round(now-ts/1000,1)),"state":state,"next_15":n15,"next_30":n30,"next_60":n60,"scalp_bias":scalp,"validation":{"dir15_threshold":.80,"dir15_holdout_accuracy":.850138,"dir15_holdout_coverage":.084822},"note":"Historical accuracy is a Sep-2026 Binance holdout, not a Kalshi win-rate. Live source is Binance.US, so this paper layer must be forward-validated."}
+            self.last={"version":"v3","mode":"paper","status":"live","source":"Binance.US BTCUSDT trades → 1s bars","source_price":round(price,2),"source_ts":ts,"age_seconds":max(0,round(now-ts/1000,1)),"state":state,"next_15":n15,"next_30":n30,"next_60":n60,"scalp_bias":scalp,"validation":{"dir15_threshold":.80,"dir15_holdout_accuracy":.850138,"dir15_holdout_coverage":.084822},"note":"Historical accuracy is a Sep-2026 Binance holdout, not a Kalshi win-rate. Live source is Binance.US, so this paper layer must be forward-validated."}
         except Exception as e:
             self.last={**self.last,"status":"error","error":str(e)[:240],"age_seconds":None}
-        return self.last
+        return self.last    @staticmethod
+    def _bars_from_trades(trades, now_ms):
+        by={}
+        for t in trades:
+            sec=int(t["T"])//1000; p=float(t["p"]); q=float(t["q"])
+            b=by.setdefault(sec,{"open":p,"high":p,"low":p,"close":p,"volume":0.0,"trades":0,"taker_base":0.0})
+            b["high"]=max(b["high"],p); b["low"]=min(b["low"],p); b["close"]=p; b["volume"]+=q; b["trades"]+=1
+            if not bool(t.get("m",False)): b["taker_base"]+=q
+        end=now_ms//1000; start=end-139; rows=[]; prev=None
+        for sec in range(start,end+1):
+            b=by.get(sec)
+            if b is None:
+                if prev is None: continue
+                b={"open":prev,"high":prev,"low":prev,"close":prev,"volume":0.0,"trades":0,"taker_base":0.0}
+            prev=b["close"]
+            rows.append([sec*1000,b["open"],b["high"],b["low"],b["close"],b["volume"],sec*1000+999,0,b["trades"],b["taker_base"],0,0])
+        return rows
+
+    def _fetch_trades(self):
+        now_ms=int(time.time()*1000); start_ms=now_ms-145000; out=[]; from_id=None
+        for _ in range(8):
+            params={"symbol":"BTCUSDT","limit":1000}
+            if from_id is None: params.update({"startTime":start_ms,"endTime":now_ms})
+            else: params["fromId"]=from_id
+            r=self.session.get(TRADES_URL,params=params,timeout=8); r.raise_for_status(); batch=r.json()
+            if not isinstance(batch,list) or not batch: break
+            out.extend(t for t in batch if start_ms<=int(t["T"])<=now_ms)
+            last=int(batch[-1]["a"])
+            if len(batch)<1000 or int(batch[-1]["T"])>=now_ms-1000: break
+            from_id=last+1
+        return self._bars_from_trades(out,now_ms)
+
+
