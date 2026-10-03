@@ -814,7 +814,7 @@ export default function DashboardPage({
     : RANGES.find((r) => r.k === pnlRange)?.label || "Today";
 
   const activeInfo = activeKey ? splitAssetKey(activeKey) : null;
-  const scalp = scalpRead(data);
+  const pred = data.v3_prediction;
 
   return (
     <div className="r-page" data-rider="1">
@@ -993,43 +993,37 @@ export default function DashboardPage({
           </div>
         </div>
 
-        {/* BTC move / scalp monitor — observational only; it never places an order. */}
+        {/* V3 forward predictor — paper/read-only; never submits an order. */}
         <div className="r-section">
           <div className="r-section-label">
-            <span className="r-num">02</span>BTC move monitor
-            <div style={{ marginTop: 18, color: scalp.state === "WAIT" ? "var(--r-ink-3)" : scalp.state === "WATCH" ? "var(--r-warn)" : scalp.state === "UP MOVE" ? "var(--r-pos)" : "var(--r-neg)", letterSpacing: "0.18em" }}>
-              {scalp.state}
+            <span className="r-num">02</span>V3 BTC prediction · PAPER
+            <div style={{ marginTop: 18, color: pred?.state === "UP" ? "var(--r-pos)" : pred?.state === "DOWN" ? "var(--r-neg)" : "var(--r-ink-3)", letterSpacing: "0.18em" }}>
+              {pred?.status === "live" ? (pred.state ?? "WAIT") : pred?.status === "error" ? "DATA ERROR" : "WARMING"}
             </div>
           </div>
           <div className="r-gates">
+            {(["next_15","next_30","next_60"] as const).map((k) => {
+              const p = pred?.[k];
+              const label = k === "next_15" ? "NEXT 15 SEC" : k === "next_30" ? "NEXT 30 SEC" : "NEXT 60 SEC";
+              return (
+                <div className="r-gate" key={k}>
+                  <span className="r-gate-name">{label}</span>
+                  <span className="r-gate-val">{p ? p.direction : "warming"}</span>
+                  <span className="r-gate-ref">{p ? `model confidence ${(p.confidence * 100).toFixed(1)}% · P(up) ${(p.probability_up * 100).toFixed(1)}%` : "collecting prediction inputs"}</span>
+                  <span className={`r-gate-flag ${p?.actionable ? (p.direction === "UP" ? "r-ok" : "r-no") : ""}`}>{p?.actionable ? "SIGNAL" : "WAIT"}</span>
+                </div>
+              );
+            })}
             <div className="r-gate">
-              <span className="r-gate-name">BTC now</span>
-              <span className="r-gate-val">${data.btc_price.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
-              <span className="r-gate-ref">live feed</span>
-              <span className="r-gate-flag r-ok">LIVE</span>
-            </div>
-            <div className="r-gate">
-              <span className="r-gate-name">15-second move</span>
-              <span className="r-gate-val">{scalp.move15 == null ? "warming" : `${scalp.move15 >= 0 ? "+" : "−"}${Math.abs(scalp.move15).toFixed(2)}`}</span>
-              <span className="r-gate-ref">WATCH at ±$25</span>
-              <span className={`r-gate-flag ${scalp.move15 != null && Math.abs(scalp.move15) >= 25 ? "r-no" : ""}`}>{scalp.move15 != null && Math.abs(scalp.move15) >= 25 ? "MOVE" : "—"}</span>
-            </div>
-            <div className="r-gate">
-              <span className="r-gate-name">60-second move</span>
-              <span className="r-gate-val">{scalp.move60 == null ? "warming" : `${scalp.move60 >= 0 ? "+" : "−"}${Math.abs(scalp.move60).toFixed(2)}`}</span>
-              <span className="r-gate-ref">LARGE at ±$50</span>
-              <span className={`r-gate-flag ${scalp.move60 != null && Math.abs(scalp.move60) >= 50 ? "r-no" : ""}`}>{scalp.move60 != null && Math.abs(scalp.move60) >= 50 ? "LARGE" : "—"}</span>
-            </div>
-            <div className="r-gate">
-              <span className="r-gate-name">momentum alignment</span>
-              <span className="r-gate-val">{scalp.direction}</span>
-              <span className="r-gate-ref">1m {data.btc_momentum_1m >= 0 ? "+" : ""}{data.btc_momentum_1m.toFixed(3)}% · 5m {data.btc_momentum_5m >= 0 ? "+" : ""}{data.btc_momentum_5m.toFixed(3)}%</span>
-              <span className="r-gate-flag">{scalp.direction}</span>
+              <span className="r-gate-name">prediction source</span>
+              <span className="r-gate-val">{pred?.source ?? "V3 loading"}</span>
+              <span className="r-gate-ref">{pred?.source_price ? `source BTC $${pred.source_price.toLocaleString()} · age ${pred.age_seconds ?? "—"}s` : (pred?.error ?? "paper mode")}</span>
+              <span className={`r-gate-flag ${pred?.status === "live" ? "r-ok" : "r-no"}`}>{pred?.status?.toUpperCase() ?? "WAIT"}</span>
             </div>
             <div style={{ padding: "14px 0", color: "var(--r-ink-2)", fontSize: 13, lineHeight: 1.6 }}>
-              <b style={{ color: "var(--r-ink)" }}>{scalp.state}:</b> {scalp.detail}.
+              <b style={{ color: "var(--r-ink)" }}>ACTION:</b> {pred?.status !== "live" ? "WAIT — prediction feed is not live." : pred?.next_15?.actionable ? `${pred.next_15.direction} paper signal for the next 15 seconds.` : "WAIT — V3 is abstaining."}
               <div style={{ marginTop: 6, color: "var(--r-ink-4)", fontSize: 11 }}>
-                Read-only movement heuristic. It is not a validated profit signal and never submits a Kalshi order.
+                Historical Sep-2026 holdout: selective 15s signals were 85.0% accurate at the deployed threshold with ~8.5% coverage. This is not a Kalshi win-rate. Paper/read-only; no V3 order submission.
               </div>
             </div>
           </div>
