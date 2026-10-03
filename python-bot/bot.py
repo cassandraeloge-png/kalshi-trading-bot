@@ -1075,7 +1075,7 @@ class TradingBot:
 
         # Paper-only V3 forward predictor. This is observational and never routes orders.
         self.v3_predictor = V3Predictor()
-        self._log(f"[V3] predictor status={self.v3_predictor.last.get('status')} error={self.v3_predictor.last.get('error')}")
+        self._log(f"[V3] predictor status={self.v3_predictor.last.get('status')} error={self.v3_predictor.last.get('error')} features={len(self.v3_predictor.bundle.get('features', [])) if self.v3_predictor.bundle else 0}")
 
         # Risk manager
         risk_config = RiskConfig(
