@@ -11,7 +11,8 @@ import requests
 MODEL_URL=os.environ.get("V3_MODEL_URL","https://raw.githubusercontent.com/cassandraeloge-png/btc-15min/main/research/forward-predictor-v3-model.b64")
 MODEL_BLOB_API=os.environ.get("V3_MODEL_BLOB_API","https://api.github.com/repos/cassandraeloge-png/btc-15min/git/blobs/24e04283a79c5a12ee3834f43b7fd209d44fcd95")
 MODEL_PATH=Path(os.environ.get("V3_MODEL_PATH",str(Path(tempfile.gettempdir())/"forward-predictor-v3-model.b64")))
-KLINES_URL="https://api.binance.us/api/v3/klines"
+KLINES_URL="https://api.binance.com/api/v3/klines"
+US_KLINES_URL="https://api.binance.us/api/v3/klines"
 FEATURES=["move2","move3","move5","move10","move15","move30","move60","move120","accel5_15","accel15_30","imb5","imb15","imb30","imb60","imb_accel","vol5ratio","vol15ratio","trade5ratio","trade15ratio","range15","pos15","range60","pos60","range120","pos120","rv15","rv60","rv_ratio","body5","lowerwick5","round_sin","round_cos"]
 
 class V3Predictor:
@@ -98,24 +99,33 @@ class V3Predictor:
         return rows
 
     def _fetch_trades(self):
-        # Binance.US aggregate trades can return no usable history from Render.
-        # Use public 1-minute klines as a safe fallback input and expand each
-        # completed minute into 1-second proxy bars. This keeps V3 operational
-        # in paper mode but is explicitly marked as a proxy/mismatch.
+        # Primary: exact Binance.com BTCUSDT 1-second klines, matching the V3
+        # historical feature source. Render may geo-block this endpoint, so a
+        # clearly labelled Binance.US 1-minute proxy remains as paper fallback.
         now_ms=int(time.time()*1000)
-        r=self.session.get(KLINES_URL,params={"symbol":"BTCUSDT","interval":"1m","limit":4},timeout=8)
+        try:
+            r=self.session.get(KLINES_URL,params={"symbol":"BTCUSDT","interval":"1s","limit":140},timeout=8)
+            r.raise_for_status(); ks=r.json()
+            if isinstance(ks,list) and len(ks)>=125:
+                self._active_source="Binance.com BTCUSDT native 1s bars"
+                self._source_exact=True
+                return ks[-140:]
+        except Exception as e:
+            self._primary_error=str(e)[:160]
+
+        r=self.session.get(US_KLINES_URL,params={"symbol":"BTCUSDT","interval":"1m","limit":4},timeout=8)
         r.raise_for_status(); ks=r.json()
-        if not isinstance(ks,list) or len(ks)<3: return []
+        if not isinstance(ks,list) or len(ks)<3:
+            raise RuntimeError(f"Binance.US fallback returned {len(ks) if isinstance(ks,list) else 'non-list'} klines; primary={getattr(self,'_primary_error','unavailable')}")
         rows=[]
         for k in ks:
             ot=int(k[0]); o=float(k[1]); h=float(k[2]); lo=float(k[3]); c=float(k[4]); vol=float(k[5]); trades=float(k[8]); tb=float(k[9])
-            # Linear close path plus minute high/low envelope; volume/trades
-            # distributed evenly. This is fallback-only and never represented
-            # as exact 1-second Binance.com training parity.
             for i in range(60):
                 frac=(i+1)/60.0; px=o+(c-o)*frac
                 hi=max(px, h if i==30 else px); low=min(px, lo if i==30 else px)
                 rows.append([ot+i*1000,px,hi,low,px,vol/60.0,ot+i*1000+999,0,trades/60.0,tb/60.0,0,0])
+        self._active_source="Binance.US BTCUSDT 1m → 1s PAPER PROXY"
+        self._source_exact=False
         return [x for x in rows if x[0] <= now_ms][-140:]
 
     def snapshot(self):
@@ -132,7 +142,7 @@ class V3Predictor:
             n15=self._read(p15,.80); n30=self._read(p30,.85); n60=self._read(p60,.85)
             scalp={"up30_before_down10":round(up30,4),"down30_before_up10":round(dn30,4),"research_only":True}
             state=n15["direction"] if n15["actionable"] else "WAIT"
-            self.last={"version":"v3","mode":"paper","status":"live","source":"Binance.US BTCUSDT 1m → 1s proxy bars","source_price":round(price,2),"source_ts":ts,"age_seconds":max(0,round(now-ts/1000,1)),"state":state,"next_15":n15,"next_30":n30,"next_60":n60,"scalp_bias":scalp,"validation":{"dir15_threshold":.80,"dir15_holdout_accuracy":.850138,"dir15_holdout_coverage":.084822},"note":"LIVE INPUT IS A 1-MINUTE-TO-1-SECOND PROXY, not exact training parity. Historical accuracy must not be applied to these live proxy predictions. Paper research only."}
+            self.last={"version":"v3","mode":"paper","status":"live","source":getattr(self,"_active_source","unknown"),"source_exact_training_parity":bool(getattr(self,"_source_exact",False)),"source_price":round(price,2),"source_ts":ts,"age_seconds":max(0,round(now-ts/1000,1)),"state":state,"next_15":n15,"next_30":n30,"next_60":n60,"scalp_bias":scalp,"validation":{"dir15_threshold":.80,"dir15_holdout_accuracy":.850138,"dir15_holdout_coverage":.084822},"note":("Native Binance.com 1s input matches the historical bar source; still paper validation, not a Kalshi win-rate." if getattr(self,"_source_exact",False) else "LIVE INPUT IS A 1-MINUTE-TO-1-SECOND PROXY; historical accuracy must not be applied to these proxy predictions. Paper research only.")}
         except Exception as e:
             self.last={**self.last,"status":"error","error":str(e)[:240],"age_seconds":None}
         return self.last
