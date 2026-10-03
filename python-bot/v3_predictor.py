@@ -168,8 +168,11 @@ class V3Predictor:
             p15=self._prob("dir15",X); p30=self._prob("dir30",X); p60=self._prob("dir60",X)
             up30=self._prob("up30_before_dn10",X); dn30=self._prob("dn30_before_up10",X)
             n15=self._read(p15,.80); n30=self._read(p30,.85); n60=self._read(p60,.85)
+            proxy=("PAPER PROXY" in getattr(self,"_active_source",""))
+            if proxy:
+                for n in (n15,n30,n60): n["actionable"]=False
             scalp={"up30_before_down10":round(up30,4),"down30_before_up10":round(dn30,4),"research_only":True}
-            state=n15["direction"] if n15["actionable"] else "WAIT"
+            state=n15["direction"] if n15["actionable"] and not proxy else "WAIT"
             self.last={"version":"v3","mode":"paper","status":"live","source":getattr(self,"_active_source","unknown"),"source_exact_training_parity":bool(getattr(self,"_source_exact",False)),"source_price":round(price,2),"source_ts":ts,"age_seconds":max(0,round(now-ts/1000,1)),"state":state,"next_15":n15,"next_30":n30,"next_60":n60,"scalp_bias":scalp,"validation":{"dir15_threshold":.80,"dir15_holdout_accuracy":.850138,"dir15_holdout_coverage":.084822},"note":("Native Binance.com 1s input matches the historical bar source; still paper validation, not a Kalshi win-rate." if getattr(self,"_source_exact",False) else "LIVE INPUT IS A 1-MINUTE-TO-1-SECOND PROXY; historical accuracy must not be applied to these proxy predictions. Paper research only.")}
             if not self._reported_live:
                 print(f"[V3] LIVE source={self.last.get('source')} exact={self.last.get('source_exact_training_parity')} price={self.last.get('source_price')} p15={self.last.get('next_15')}", flush=True)
