@@ -68,7 +68,9 @@ class V3Predictor:
         sec=(d.ts//1000)%900
         x["round_sin"]=np.sin(2*np.pi*sec/900); x["round_cos"]=np.cos(2*np.pi*sec/900)
         row=x.iloc[-1][FEATURES].replace([np.inf,-np.inf],np.nan)
-        if row.isna().any(): raise RuntimeError("warming 120s feature history")
+        if row.isna().any():
+            missing=[k for k in FEATURES if pd.isna(row[k])]
+            raise RuntimeError(f"feature NaN: {','.join(missing)} rows={len(d)} first={int(d.ts.iloc[0])} last={int(d.ts.iloc[-1])}")
         return row.to_numpy(float).reshape(1,-1), float(c.iloc[-1]), int(d.ts.iloc[-1])
 
     def _prob(self,target,X):
