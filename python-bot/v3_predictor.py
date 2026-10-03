@@ -69,28 +69,7 @@ class V3Predictor:
         conf=max(p,1-p); direction="UP" if p>=.5 else "DOWN"
         return {"direction":direction,"probability_up":round(p,4),"confidence":round(conf,4),"actionable":bool(conf>=threshold)}
 
-    def snapshot(self):
-        now=time.time()
-        if now-self.last_fetch<5: return self.last
-        self.last_fetch=now
-        try:
-            if self.bundle is None: self._load()
-            r=self.session.get(KLINES_URL,params={"symbol":"BTCUSDT","interval":"1s","limit":140},timeout=8); r.raise_for_status()
-            rows=r.json()
-            if not isinstance(rows,list) or len(rows)<125: raise RuntimeError(f"only {len(rows) if isinstance(rows,list) else 0} one-second bars")
-            X,price,ts=self._features(rows)
-            p15=self._prob("dir15",X); p30=self._prob("dir30",X); p60=self._prob("dir60",X)
-            up30=self._prob("up30_before_dn10",X); dn30=self._prob("dn30_before_up10",X)
-            n15=self._read(p15,.80); n30=self._read(p30,.85); n60=self._read(p60,.85)
-            # The barrier models are conditional on one barrier being hit, so expose
-            # them as research context only, never as an order trigger.
-            scalp={"up30_before_down10":round(up30,4),"down30_before_up10":round(dn30,4),"research_only":True}
-            state="WAIT"
-            if n15["actionable"]: state=n15["direction"]
-            self.last={"version":"v3","mode":"paper","status":"live","source":"Binance.US BTCUSDT trades → 1s bars","source_price":round(price,2),"source_ts":ts,"age_seconds":max(0,round(now-ts/1000,1)),"state":state,"next_15":n15,"next_30":n30,"next_60":n60,"scalp_bias":scalp,"validation":{"dir15_threshold":.80,"dir15_holdout_accuracy":.850138,"dir15_holdout_coverage":.084822},"note":"Historical accuracy is a Sep-2026 Binance holdout, not a Kalshi win-rate. Live source is Binance.US, so this paper layer must be forward-validated."}
-        except Exception as e:
-            self.last={**self.last,"status":"error","error":str(e)[:240],"age_seconds":None}
-        return self.last    @staticmethod
+    @staticmethod
     def _bars_from_trades(trades, now_ms):
         by={}
         for t in trades:
@@ -122,4 +101,21 @@ class V3Predictor:
             from_id=last+1
         return self._bars_from_trades(out,now_ms)
 
-
+    def snapshot(self):
+        now=time.time()
+        if now-self.last_fetch<5: return self.last
+        self.last_fetch=now
+        try:
+            if self.bundle is None: self._load()
+            rows=self._fetch_trades()
+            if len(rows)<125: raise RuntimeError(f"only {len(rows)} reconstructed one-second bars")
+            X,price,ts=self._features(rows)
+            p15=self._prob("dir15",X); p30=self._prob("dir30",X); p60=self._prob("dir60",X)
+            up30=self._prob("up30_before_dn10",X); dn30=self._prob("dn30_before_up10",X)
+            n15=self._read(p15,.80); n30=self._read(p30,.85); n60=self._read(p60,.85)
+            scalp={"up30_before_down10":round(up30,4),"down30_before_up10":round(dn30,4),"research_only":True}
+            state=n15["direction"] if n15["actionable"] else "WAIT"
+            self.last={"version":"v3","mode":"paper","status":"live","source":"Binance.US BTCUSDT trades → 1s bars","source_price":round(price,2),"source_ts":ts,"age_seconds":max(0,round(now-ts/1000,1)),"state":state,"next_15":n15,"next_30":n30,"next_60":n60,"scalp_bias":scalp,"validation":{"dir15_threshold":.80,"dir15_holdout_accuracy":.850138,"dir15_holdout_coverage":.084822},"note":"Historical accuracy is a Sep-2026 Binance holdout, not a Kalshi win-rate. Live source is Binance.US, so this paper layer must be forward-validated."}
+        except Exception as e:
+            self.last={**self.last,"status":"error","error":str(e)[:240],"age_seconds":None}
+        return self.last
