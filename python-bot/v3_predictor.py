@@ -17,7 +17,7 @@ FEATURES=["move2","move3","move5","move10","move15","move30","move60","move120",
 
 class V3Predictor:
     def __init__(self):
-        self.session=requests.Session(); self.bundle=None; self.last_fetch=0.0; self._reported_live=False
+        self.session=requests.Session(); self.bundle=None; self.last_fetch=0.0; self._reported_live=False; self._last_error_logged=None
         self.last={"version":"v3","mode":"paper","status":"warming","source":"Binance.US BTCUSDT 1m → 1s proxy bars","note":"Live venue proxy; historical V3 was trained on Binance.com BTCUSDT.","next_15":None,"next_30":None,"next_60":None,"scalp_bias":None}
         try: self._load()
         except Exception as e: self.last["status"]="error"; self.last["error"]=str(e)[:240]
@@ -147,5 +147,9 @@ class V3Predictor:
                 print(f"[V3] LIVE source={self.last.get('source')} exact={self.last.get('source_exact_training_parity')} price={self.last.get('source_price')} p15={self.last.get('next_15')}", flush=True)
                 self._reported_live=True
         except Exception as e:
-            self.last={**self.last,"status":"error","error":str(e)[:240],"age_seconds":None}
+            err=str(e)[:240]
+            self.last={**self.last,"status":"error","error":err,"age_seconds":None}
+            if err != self._last_error_logged:
+                print(f"[V3] SNAPSHOT ERROR {err}", flush=True)
+                self._last_error_logged=err
         return self.last
