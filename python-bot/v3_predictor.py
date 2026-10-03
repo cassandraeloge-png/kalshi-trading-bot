@@ -36,7 +36,7 @@ class V3Predictor:
         raw=base64.b64decode(encoded)
         self.bundle=pickle.loads(raw)
         if self.bundle.get("version")!=3: raise RuntimeError("wrong V3 artifact")
-        if self.bundle.get("features")!=FEATURES: raise RuntimeError("V3 feature mismatch")
+        if self.bundle.get("features")!=FEATURES: raise RuntimeError(f"V3 feature mismatch model={self.bundle.get('features')} live={FEATURES}")
 
     @staticmethod
     def _features(rows):
