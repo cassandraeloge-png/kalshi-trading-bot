@@ -54,6 +54,7 @@ from risk_manager import RiskConfig, RiskManager, TradeRecord, kalshi_taker_fee,
 from strategies import ResolutionRiderStrategy, Signal
 from multi_feed import MultiExchangeFeed
 from performance import PerformanceTracker
+from v3_predictor import V3Predictor
 
 
 # ─── Orderbook parsing ───────────────────────────────────────────────────────
@@ -1071,6 +1072,10 @@ class TradingBot:
         self.scanner = self.assets[primary]["scanner"]
         self.price_feed = self.assets[primary]["price_feed"]
         self.display_feeds = {a["symbol"]: a["price_feed"] for a in self.assets.values()}
+
+        # Paper-only V3 forward predictor. This is observational and never routes orders.
+        self.v3_predictor = V3Predictor()
+        self._log(f"[V3] predictor status={self.v3_predictor.last.get('status')}")
 
         # Risk manager
         risk_config = RiskConfig(
@@ -3364,6 +3369,7 @@ class TradingBot:
             "btc_momentum_1m": round(btc["mom_1m"], 4),
             "btc_momentum_5m": round(btc["mom_5m"], 4),
             "btc_prices": btc["prices"],
+            "v3_prediction": self.v3_predictor.snapshot(),
             "eth_price": 0,
             "eth_momentum_1m": 0,
             "eth_momentum_5m": 0,
