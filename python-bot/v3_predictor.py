@@ -67,11 +67,14 @@ class V3Predictor:
         x["lowerwick5"]=(np.minimum(d.open,d.close)-d.low).rolling(5,min_periods=5).sum()
         sec=(d.ts//1000)%900
         x["round_sin"]=np.sin(2*np.pi*sec/900); x["round_cos"]=np.cos(2*np.pi*sec/900)
-        row=x.iloc[-1][FEATURES].replace([np.inf,-np.inf],np.nan)
-        if row.isna().any():
-            missing=[k for k in FEATURES if pd.isna(row[k])]
-            raise RuntimeError(f"feature NaN: {','.join(missing)} rows={len(d)} first={int(d.ts.iloc[0])} last={int(d.ts.iloc[-1])}")
-        return row.to_numpy(float).reshape(1,-1), float(c.iloc[-1]), int(d.ts.iloc[-1])
+        valid=x[FEATURES].replace([np.inf,-np.inf],np.nan).dropna()
+        if valid.empty:
+            missing=[k for k in FEATURES if pd.isna(x.iloc[-1][k])]
+            raise RuntimeError(f"no valid feature row; latest NaN={','.join(missing)} rows={len(d)}")
+        idx=valid.index[-1]; row=valid.loc[idx]
+        feature_ts=int(d.ts.loc[idx]); age=max(0.0,time.time()-feature_ts/1000.0)
+        if age>15: raise RuntimeError(f"latest complete feature row stale age={age:.1f}s")
+        return row.to_numpy(float).reshape(1,-1), float(c.loc[idx]), feature_ts
 
     def _prob(self,target,X):
         z=self.bundle["models"][target]; raw=z["model"].predict_proba(X)[:,1]
