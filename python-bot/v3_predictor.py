@@ -12,7 +12,7 @@ MODEL_URL=os.environ.get("V3_MODEL_URL","https://raw.githubusercontent.com/cassa
 MODEL_BLOB_API=os.environ.get("V3_MODEL_BLOB_API","https://api.github.com/repos/cassandraeloge-png/btc-15min/git/blobs/24e04283a79c5a12ee3834f43b7fd209d44fcd95")
 MODEL_PATH=Path(os.environ.get("V3_MODEL_PATH",str(Path(tempfile.gettempdir())/"forward-predictor-v3-model.b64")))
 TRADES_URL="https://api.binance.us/api/v3/aggTrades"
-FEATURES=["move2","move3","move5","move10","move15","move30","move60","move120","accel5_15","accel15_30","imb5","imb15","imb30","imb60","imb_accel","vol5ratio","vol15ratio","trade5ratio","trade15ratio","range15","pos15","range60","pos60","range120","pos120","rv15","rv60","rv_ratio","body5","upperwick5","lowerwick5","round_sin","round_cos"]
+FEATURES=["move2","move3","move5","move10","move15","move30","move60","move120","accel5_15","accel15_30","imb5","imb15","imb30","imb60","imb_accel","vol5ratio","vol15ratio","trade5ratio","trade15ratio","range15","pos15","range60","pos60","range120","pos120","rv15","rv60","rv_ratio","body5","lowerwick5","round_sin","round_cos"]
 
 class V3Predictor:
     def __init__(self):
